@@ -1,0 +1,275 @@
+<Window x:Class="HotaruCodeViz.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:HotaruCodeViz"
+        Title="HotaruCodeViz" Height="920" Width="1550"
+        Closing="Window_Closing" PreviewKeyDown="Window_PreviewKeyDown">
+    <DockPanel x:Name="RootPanel" Background="White">
+        <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True">
+            <Button x:Name="RunButton" Content="▶ 実行" Click="Run_Click" Padding="10,3" FontSize="14"
+                    ToolTip="1歩ずつ光らせながら実行（一時停止中なら再開）"/>
+            <Button x:Name="FastButton" Content="⏩ 早送り" Click="Fast_Click" Padding="10,3" FontSize="14"
+                    ToolTip="画面を更新せず全速で実行し、ブレークポイントで止まる"/>
+            <Button x:Name="PauseButton" Content="⏸ 一時停止" Click="Pause_Click" IsEnabled="False" Padding="10,3" FontSize="14"/>
+            <Button x:Name="StepButton" Content="⏭ ステップ" Click="Step_Click" Padding="10,3" FontSize="14"/>
+            <Button x:Name="StopButton" Content="⏹ 停止" Click="Stop_Click" IsEnabled="False" Padding="10,3" FontSize="14"/>
+            <Separator/>
+            <TextBlock Text="📚 図鑑" VerticalAlignment="Center" Margin="4,0" FontSize="14"/>
+            <ComboBox x:Name="SampleCombo" Width="170" VerticalAlignment="Center" SelectionChanged="SampleCombo_SelectionChanged"
+                      ToolTip="アルゴリズムのサンプルを読み込む（コードと入力が入れ替わります）"/>
+            <Separator/>
+            <TextBlock Text="待ち時間" VerticalAlignment="Center" Margin="8,0,4,0"/>
+            <Slider x:Name="SpeedSlider" Width="150" Minimum="0" Maximum="1500" Value="400"
+                    VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                    ValueChanged="SpeedSlider_ValueChanged"/>
+            <TextBlock x:Name="SpeedText" Width="70" VerticalAlignment="Center" Margin="6,0"/>
+            <Separator/>
+            <CheckBox x:Name="WatchCheck" Content="変数ウォッチ" IsChecked="True" VerticalAlignment="Center" Margin="6,0"
+                      ToolTip="次の実行から有効"/>
+            <CheckBox x:Name="ExprCheck" Content="式の値" IsChecked="True" VerticalAlignment="Center" Margin="6,0"
+                      ToolTip="a + b → 7 のように式ごとに光らせる（次の実行から有効）"/>
+            <CheckBox x:Name="SoundCheck" Content="🔊 音" IsChecked="False" VerticalAlignment="Center" Margin="6,0,2,0"
+                      Checked="SoundCheck_Changed" Unchecked="SoundCheck_Changed"
+                      ToolTip="実行を音で聴く：高さ＝行番号（ペンタトニック）、再帰が深いほど高く、true は明るい音・false は「ぽん」と下がる音、return はベル"/>
+            <Slider x:Name="VolumeSlider" Width="70" Minimum="0" Maximum="100" Value="50" VerticalAlignment="Center"
+                    IsMoveToPointEnabled="True" ValueChanged="VolumeSlider_ValueChanged" ToolTip="音量"/>
+            <Separator/>
+            <CheckBox x:Name="RecordCheck" Content="記録" IsChecked="True" VerticalAlignment="Center" Margin="6,0"
+                      ToolTip="巻き戻し用に、直近 10 万ステップの値を記録する（早送りは少し遅くなる。次の実行から有効）"/>
+            <CheckBox x:Name="HeatmapCheck" Content="ヒートマップ" IsChecked="True" VerticalAlignment="Center" Margin="6,0"
+                      ToolTip="行ごとの実行回数を色で表示（灰色は一度も実行されなかった行）"
+                      Checked="HeatmapCheck_Changed" Unchecked="HeatmapCheck_Changed"/>
+            <Separator/>
+            <Button x:Name="RecordVideoButton" Content="⏺ 録画" Click="RecordVideo_Click" Padding="8,3" FontSize="14"
+                    ToolTip="ウィンドウを録画して GIF にする（ffmpeg があれば MP4 も。🔊 音がオンなら音付き）。保存先：ビデオ\HotaruCodeViz"/>
+            <Button x:Name="RecordAudioButton" Content="🎙 録音" Click="RecordAudio_Click" Padding="8,3" FontSize="14"
+                    ToolTip="鳴っている音を WAV に録音する（🔊 音をオンにして使う）。保存先：ビデオ\HotaruCodeViz"/>
+            <TextBlock x:Name="RecordingText" VerticalAlignment="Center" Margin="6,0" Foreground="#C62828" FontWeight="Bold"/>
+        </ToolBar>
+
+        <!-- 巻き戻し（タイムライン） -->
+        <Border DockPanel.Dock="Top" Background="#F4F6FB" BorderBrush="#DDD" BorderThickness="0,0,0,1" Padding="8,3">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="🕰 巻き戻し" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,8,0"/>
+                <Button x:Name="HistFirstButton" DockPanel.Dock="Left" Content="⏮" Click="HistFirst_Click" Padding="8,1" ToolTip="記録の最初へ"/>
+                <Button x:Name="HistBackButton" DockPanel.Dock="Left" Content="◀" Click="HistBack_Click" Padding="8,1" Margin="2,0" ToolTip="1歩戻る（F7）"/>
+                <Button x:Name="HistForwardButton" DockPanel.Dock="Left" Content="▶" Click="HistForward_Click" Padding="8,1" ToolTip="1歩進む（F8）。最新で一時停止中なら、実際に1歩実行する"/>
+                <Button x:Name="HistLatestButton" DockPanel.Dock="Left" Content="⏭ 最新" Click="HistLatest_Click" Padding="8,1" Margin="2,0,10,0" ToolTip="最新のステップへ"/>
+                <TextBlock x:Name="HistoryText" DockPanel.Dock="Right" Width="420" VerticalAlignment="Center" Margin="10,0,0,0"
+                           FontFamily="Consolas" Foreground="#555" Text="実行すると、ここで過去のステップに戻れます"/>
+                <Slider x:Name="TimelineSlider" Minimum="0" Maximum="0" VerticalAlignment="Center" IsEnabled="False"
+                        IsMoveToPointEnabled="True" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" TickFrequency="1"
+                        ValueChanged="Timeline_ValueChanged"/>
+            </DockPanel>
+        </Border>
+
+        <StatusBar DockPanel.Dock="Bottom">
+            <TextBlock x:Name="StatusText" FontFamily="Consolas" FontSize="13"/>
+        </StatusBar>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="5"/>
+                <RowDefinition Height="230"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="3*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ソース -->
+            <DockPanel Grid.Row="0" Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" Margin="6,4" Foreground="#555">
+                    <Run Text="ソースコード（競技プログラミングに提出するコードを貼り付け）"/>
+                    <Run Text="　● 行番号をクリック or F9 でブレークポイント（右クリック or Shift+F9 で条件付き）" Foreground="#C62828"/>
+                </TextBlock>
+                <!-- 行番号とブレークポイントの欄 -->
+                <Canvas x:Name="Gutter" DockPanel.Dock="Left" Width="54" Background="#F3F3F3" ClipToBounds="True"
+                        Cursor="Hand" MouseLeftButtonDown="Gutter_MouseLeftButtonDown"
+                        MouseRightButtonUp="Gutter_MouseRightButtonUp"/>
+                <Grid>
+                    <TextBox x:Name="SourceBox"
+                             FontFamily="Consolas" FontSize="15"
+                             AcceptsReturn="True" AcceptsTab="True"
+                             HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                             TextChanged="SourceBox_TextChanged"
+                             SelectionChanged="SourceBox_SelectionChanged"
+                             PreviewKeyDown="SourceBox_PreviewKeyDown"
+                             ScrollViewer.ScrollChanged="SourceBox_ScrollChanged"
+                             SizeChanged="SourceBox_SizeChanged"/>
+                    <!-- 行ごとの実行回数（ヒートマップ） -->
+                    <Canvas x:Name="HeatOverlay" IsHitTestVisible="False" ClipToBounds="True"/>
+                    <!-- 実行位置のハイライトを TextBox の上に重ねて描く -->
+                    <Canvas x:Name="SourceOverlay" IsHitTestVisible="False" ClipToBounds="True"/>
+                </Grid>
+            </DockPanel>
+
+            <GridSplitter Grid.Row="0" Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#DDD"/>
+
+            <!-- 構文木 -->
+            <TabControl Grid.Row="0" Grid.Column="2" x:Name="ViewTabs" SelectionChanged="ViewTabs_SelectionChanged">
+                <TabItem Header="グラフ">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4">
+                            <RadioButton x:Name="FocusRadio" Content="実行中の文だけ" GroupName="GraphMode" IsChecked="True"
+                                         VerticalAlignment="Center" Margin="2,0,10,0" Checked="GraphMode_Changed"/>
+                            <RadioButton x:Name="WholeRadio" Content="全体" GroupName="GraphMode"
+                                         VerticalAlignment="Center" Margin="0,0,16,0" Checked="GraphMode_Changed"/>
+                            <TextBlock Text="ズーム" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <Slider x:Name="ZoomSlider" Width="150" Minimum="15" Maximum="300" Value="100"
+                                    VerticalAlignment="Center" ValueChanged="ZoomSlider_ValueChanged"/>
+                            <TextBlock x:Name="ZoomText" Text="100%" Width="45" VerticalAlignment="Center" Margin="4,0"/>
+                            <TextBlock Text="Ctrl+ホイールで拡大縮小・ドラッグで移動・クリックでソースを選択" Foreground="#888"
+                                       VerticalAlignment="Center" Margin="12,0"/>
+                        </StackPanel>
+                        <ScrollViewer x:Name="GraphScroll" HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Auto" Background="#FAFAFA"/>
+                    </DockPanel>
+                </TabItem>
+                <TabItem Header="ツリー">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Margin="6,4" Foreground="#555">
+                            <Run Text="■ ステートメント" Foreground="#1565C0"/>
+                            <Run Text="■ 式" Foreground="#8E24AA"/>
+                            <Run Text="■ 宣言" Foreground="#2E7D32"/>
+                            <Run Text="■ トークン" Foreground="#9E9E9E"/>
+                        </TextBlock>
+                        <TreeView x:Name="AstView" FontFamily="Consolas" FontSize="13"
+                                  SelectedItemChanged="AstView_SelectedItemChanged"/>
+                    </DockPanel>
+                </TabItem>
+                <TabItem Header="計算量">
+                    <DockPanel Margin="8,6">
+                        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#555"
+                                   Text="入力のテンプレートと N の値を決めて「まとめて測定」を押すと、N ごとに入力を作って全速で実行し、ステップ数（文と条件の実行回数）の増え方を推定します。"/>
+                        <Grid DockPanel.Dock="Top" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="N の値" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBox Grid.Row="0" Grid.Column="1" x:Name="NsBox" FontFamily="Consolas" FontSize="13"
+                                     Text="10, 100, 1000, 10000"/>
+                            <TextBlock Grid.Row="1" Text="入力テンプレート" VerticalAlignment="Top" Margin="0,6,8,0"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="TemplateBox" FontFamily="Consolas" FontSize="13"
+                                     AcceptsReturn="True" Height="58" Margin="0,6,0,0" VerticalScrollBarVisibility="Auto"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Foreground="#888" TextWrapping="Wrap" Margin="0,2,0,0" FontSize="11.5"
+                                       Text="{}{N}　{nums N 1 100}（1〜100 の乱数を N 個）　{seq N}（1 2 … N）　{rows N 3 1 9}（3 個ずつ N 行）　{chars N .#}　{grid N N .#}　※ N*2 や N/2 のような式も書けます"/>
+                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button x:Name="MeasureButton" Content="📏 まとめて測定" Click="Measure_Click" Padding="12,3" FontSize="14"/>
+                                <Button Content="最初の N の入力を標準入力欄へ" Click="PreviewInput_Click" Padding="8,3" Margin="8,0,0,0"/>
+                                <Button Content="結果をクリア" Click="ClearMeasure_Click" Padding="8,3" Margin="8,0,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock x:Name="EstimateText" DockPanel.Dock="Top" FontSize="15" FontWeight="SemiBold" Margin="0,10,0,6"
+                                   TextWrapping="Wrap" Text="まだ測定結果がありません"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <ListView x:Name="MeasureList" FontFamily="Consolas" FontSize="13">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="N" DisplayMemberBinding="{Binding N}" Width="80"/>
+                                        <GridViewColumn Header="ステップ数" DisplayMemberBinding="{Binding Steps}" Width="120"/>
+                                        <GridViewColumn Header="ステップ/N" DisplayMemberBinding="{Binding PerN}" Width="85"/>
+                                        <GridViewColumn Header="時間" DisplayMemberBinding="{Binding Time}" Width="70"/>
+                                        <GridViewColumn Header="メモ" DisplayMemberBinding="{Binding Note}" Width="160"/>
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                            <Border Grid.Column="2" BorderBrush="#DDD" BorderThickness="1" Background="White">
+                                <Canvas x:Name="ChartCanvas" ClipToBounds="True" SizeChanged="ChartCanvas_SizeChanged"/>
+                            </Border>
+                        </Grid>
+                    </DockPanel>
+                </TabItem>
+                <TabItem x:Name="ArrayTab" Header="🎨 配列">
+                    <DockPanel>
+                        <TextBlock x:Name="SampleDescription" DockPanel.Dock="Top" Margin="8,6" TextWrapping="Wrap"
+                                   Foreground="#37474F" FontSize="13" Visibility="Collapsed"/>
+                        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Background="White">
+                            <local:ArrayView x:Name="ArrayPanel"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </TabItem>
+                <TabItem x:Name="CallTab" Header="🌳 呼び出し">
+                    <DockPanel>
+                        <TextBlock x:Name="CallInfo" DockPanel.Dock="Top" Margin="8,6" TextWrapping="Wrap" Foreground="#555"
+                                   Text="メソッドの呼び出しを木で表示します。濃い黄色＝今実行中、薄い黄色＝そこまでの道筋、→ は戻り値、×N は同じ引数での N 回目の呼び出し。"/>
+                        <ScrollViewer x:Name="CallScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                            <local:CallTreeView x:Name="CallTree"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </TabItem>
+            </TabControl>
+
+            <GridSplitter Grid.Row="1" Grid.ColumnSpan="3" Height="5" HorizontalAlignment="Stretch" Background="#DDD"/>
+
+            <!-- 下段：標準入力 / 出力 / 変数ウォッチ -->
+            <Grid Grid.Row="2" Grid.ColumnSpan="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="5"/>
+                    <ColumnDefinition Width="1.6*"/>
+                    <ColumnDefinition Width="5"/>
+                    <ColumnDefinition Width="2*"/>
+                </Grid.ColumnDefinitions>
+
+                <DockPanel Grid.Column="0">
+                    <TextBlock DockPanel.Dock="Top" Text="標準入力（問題の入力例）" Margin="6,2" Foreground="#555"/>
+                    <TextBox x:Name="InputBox" FontFamily="Consolas" FontSize="13" AcceptsReturn="True" AcceptsTab="True"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                </DockPanel>
+
+                <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#DDD"/>
+
+                <DockPanel Grid.Column="2">
+                    <TextBlock DockPanel.Dock="Top" Text="出力" Margin="6,2" Foreground="#555"/>
+                    <TextBox x:Name="OutputBox" IsReadOnly="True" FontFamily="Consolas" FontSize="13"
+                             Background="#1E1E1E" Foreground="#E0E0E0"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+                </DockPanel>
+
+                <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="#DDD"/>
+
+                <DockPanel Grid.Column="4">
+                    <TextBlock x:Name="WatchTitle" DockPanel.Dock="Top" Text="変数ウォッチ" Margin="6,2" Foreground="#555"/>
+                    <TextBlock x:Name="CallStackText" DockPanel.Dock="Top" Margin="6,0,6,2" Foreground="#B26A00"
+                               TextTrimming="CharacterEllipsis" FontFamily="Consolas, Meiryo UI" Visibility="Collapsed"
+                               ToolTip="呼び出し履歴（左が外側、右が今実行中）"/>
+                    <ListView x:Name="WatchList" FontFamily="Consolas" FontSize="13">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="ToolTip" Value="{Binding Value}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Changed}" Value="True">
+                                        <Setter Property="Background" Value="#FFF3C4"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="名前" DisplayMemberBinding="{Binding Name}" Width="90"/>
+                                <GridViewColumn Header="値" DisplayMemberBinding="{Binding Value}" Width="300"/>
+                                <GridViewColumn Header="型" DisplayMemberBinding="{Binding Type}" Width="90"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </DockPanel>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>

@@ -1,0 +1,7 @@
+bin/
+obj/
+.vs/
+*.user
+
+# 大きな外部ツール（ffmpeg など）は各自で置く
+**/tools/*.exe
