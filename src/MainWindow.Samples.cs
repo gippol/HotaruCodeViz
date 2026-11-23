@@ -51,6 +51,7 @@ public partial class MainWindow
         SampleDescription.Text = $"📚 {sample.Category}：{sample.Name} — {sample.Description}";
         SampleDescription.Visibility = Visibility.Visible;
         ArrayPanel.Clear();
+        MemoryPanel.Clear();
         ViewTabs.SelectedItem = sample.Category == "再帰" ? CallTab : ArrayTab;
         OutputBox.Clear();
         AppendOutput($"📚 {sample.Name} を読み込みました。▶ 実行すると「🎨 配列」タブで動きが見られます。\n");

@@ -16,8 +16,9 @@ public sealed class StepLimitExceededException : Exception
 /// 実行時の通知（巻き戻し用の記録にも使う）。
 /// Value は条件式や式の値、Vars は変数ウォッチの値（どちらも文字列化済み）、Step は通し番号。
 /// </summary>
-/// Shots は配列タブ用の配列のコピー（Vars と同じ並び、絵にできないものは null）。
-public sealed record HitEvent(int Id, string? Value, string[]? Vars, long Step, int Depth = 0, ArrayShot?[]? Shots = null);
+/// Shots は配列タブ用の配列のコピー（Vars と同じ並び、絵にできないものは null）。Memory はメモリタブ用のスタックとヒープのコピー。
+public sealed record HitEvent(int Id, string? Value, string[]? Vars, long Step, int Depth = 0, ArrayShot?[]? Shots = null,
+    MemoryShot? Memory = null);
 
 /// <summary>巻き戻し用に、直近のステップを決まった数だけ記録しておくリングバッファ。</summary>
 public sealed class ExecutionHistory(int capacity)
@@ -27,12 +28,13 @@ public sealed class ExecutionHistory(int capacity)
     private readonly string[]?[] _vars = new string[]?[capacity];
     private readonly long[] _steps = new long[capacity];
     private readonly ArrayShot?[]?[] _shots = new ArrayShot?[]?[capacity];
+    private readonly MemoryShot?[] _memory = new MemoryShot?[capacity];
     private readonly object _lock = new();
     private long _total;
 
     public int Capacity => capacity;
 
-    public void Add(int id, string? value, string[]? vars, long step, ArrayShot?[]? shots = null)
+    public void Add(int id, string? value, string[]? vars, long step, ArrayShot?[]? shots = null, MemoryShot? memory = null)
     {
         lock (_lock)
         {
@@ -42,6 +44,7 @@ public sealed class ExecutionHistory(int capacity)
             _vars[i] = vars;
             _steps[i] = step;
             _shots[i] = shots;
+            _memory[i] = memory;
             _total++;
         }
     }
@@ -65,7 +68,7 @@ public sealed class ExecutionHistory(int capacity)
         {
             long abs = Math.Max(0, _total - capacity) + index;
             int i = (int)(abs % capacity);
-            return new HitEvent(_ids[i], _values[i], _vars[i], _steps[i], Shots: _shots[i]);
+            return new HitEvent(_ids[i], _values[i], _vars[i], _steps[i], Shots: _shots[i], Memory: _memory[i]);
         }
     }
 }
@@ -129,6 +132,26 @@ public static class Tracer
 
     private static int _baseDepth = int.MaxValue;
 
+    /// <summary>true なら、UI に知らせる文のステップでスタックとヒープのコピー（HitEvent.Memory）を取る（メモリタブで使う）。</summary>
+    public static volatile bool CaptureMemory;
+
+    // ---- メモリタブ用のスタックフレーム ----
+    // Enter で積んで Exit で降ろす。各フレームには、そのフレームで最後に記録した変数の値（Hit の vars）を覚えておく。
+    // 外側のフレームは内側を呼んでいる間止まっているので、最後の値がそのまま「今の値」になる。
+    private sealed class Frame
+    {
+        public int MethodId = -1;
+        public int Call = NoCall;
+        public int HitId = -1;
+        public object?[]? Vars;
+    }
+
+    private static List<Frame> _frames = NewFrames();
+    private static int _frameThread = -1; // フレームを記録するスレッド（ユーザーがスレッドを作っても、最初のスレッドだけを追う）
+
+    // いちばん下は、トップレベルのステートメントなど Enter のないコードのためのフレーム
+    private static List<Frame> NewFrames() => [new Frame()];
+
     private static volatile bool _paused;
     private static volatile bool _stop;
     private static volatile bool _fast;
@@ -171,6 +194,10 @@ public static class Tracer
         History = null;
         Calls = null;
         _baseDepth = int.MaxValue;
+        CaptureMemory = false;
+        _frames = NewFrames();
+        _frameThread = -1;
+        MemorySnapshot.Reset();
     }
 
     public static void RequestStop() => _stop = true;
@@ -182,22 +209,64 @@ public static class Tracer
     public static void Hit(int id)
     {
         if (_busy) return;
+        // 変数ウォッチのない文（コンパイルの都合で外したものも含む）では、フレームの変数は前のままにしておく
         bool notify = Begin(id, out long step);
-        History?.Add(id, null, null, step);
-        if (notify) Notify(new HitEvent(id, null, null, step), 1.0);
+        var memory = notify && CaptureMemory ? SnapshotMemory() : null;
+        History?.Add(id, null, null, step, memory: memory);
+        if (notify) Notify(new HitEvent(id, null, null, step, Memory: memory), 1.0);
     }
 
     public static void Hit(int id, object?[] vars)
     {
         if (_busy) return;
+        SetFrameVars(id, vars);
         bool notify = Begin(id, out long step);
         var history = History;
         if (!notify && history is null) return; // 誰も見ないなら文字列化しない
         var texts = FormatAll(vars);
-        // 配列のコピーは画面に出すステップでだけ取る（早送り中の記録には付けない。メモリを食いすぎないように）
+        // 配列・メモリのコピーは画面に出すステップでだけ取る（早送り中の記録には付けない。メモリを食いすぎないように）
         var shots = notify && CaptureArrays ? SnapshotAll(vars) : null;
-        history?.Add(id, null, texts, step, shots);
-        if (notify) Notify(new HitEvent(id, null, texts, step, Shots: shots), 1.0);
+        var memory = notify && CaptureMemory ? SnapshotMemory() : null;
+        history?.Add(id, null, texts, step, shots, memory);
+        if (notify) Notify(new HitEvent(id, null, texts, step, Shots: shots, Memory: memory), 1.0);
+    }
+
+    private static bool OwnsFrames()
+    {
+        int me = Environment.CurrentManagedThreadId;
+        if (_frameThread == me) return true;
+        if (_frameThread != -1) return false;
+        _frameThread = me;
+        return true;
+    }
+
+    private static void SetFrameVars(int id, object?[] vars)
+    {
+        if (!CaptureMemory || !OwnsFrames()) return;
+        var top = _frames[^1];
+        top.HitId = id;
+        top.Vars = vars;
+    }
+
+    private static MemoryShot? SnapshotMemory()
+    {
+        if (!OwnsFrames()) return null;
+        _busy = true;
+        try
+        {
+            var frames = new List<(int, int, object?[]?)>(_frames.Count);
+            foreach (var f in _frames)
+                if (f.Vars is not null || f.MethodId >= 0) frames.Add((f.MethodId, f.HitId, f.Vars));
+            return MemorySnapshot.Take(frames);
+        }
+        catch
+        {
+            return null; // 表示のための処理で、ユーザーのプログラムを止めない
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private static ArrayShot?[]? SnapshotAll(object?[] values)
@@ -228,7 +297,9 @@ public static class Tracer
         var texts = args is null || calls.Full ? null : FormatAll(args);
         // 「同じ引数で何回目か」は、引数が数・文字列などの単純な値のときだけ数える（オブジェクトは表示が同じでも別物のことがある）
         bool simple = args is null || args.All(a => a is null or string or decimal or Enum || a.GetType().IsPrimitive);
-        return calls.Push(methodId, texts, Interlocked.Read(ref _steps), simple);
+        int call = calls.Push(methodId, texts, Interlocked.Read(ref _steps), simple);
+        if (CaptureMemory && OwnsFrames()) _frames.Add(new Frame { MethodId = methodId, Call = call, Vars = args ?? [] });
+        return call;
     }
 
     /// <summary>return の値を記録して、そのまま返す。</summary>
@@ -250,6 +321,16 @@ public static class Tracer
     {
         if (call == NoCall) return;
         Calls?.Pop(call, Interlocked.Read(ref _steps));
+        if (CaptureMemory && OwnsFrames())
+        {
+            // ふつうはいちばん上。記録しなかった呼び出し（Hidden）は同じ番号が並ぶが、上から探せば正しく降ろせる
+            for (int i = _frames.Count - 1; i >= 1; i--)
+            {
+                if (_frames[i].Call != call) continue;
+                _frames.RemoveRange(i, _frames.Count - i);
+                break;
+            }
+        }
     }
 
     /// <summary>ループなどの条件 + 条件付きブレークポイント（条件式の値を出したあとに判定する）。</summary>

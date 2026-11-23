@@ -7,8 +7,11 @@ namespace HotaruCodeViz;
 
 public enum HitKind { Statement, Condition, Expression }
 
-/// <summary>計装ポイント1つ分の情報。Node は「元の」構文木のノード。</summary>
-public sealed record HitInfo(SyntaxNode Node, HitKind Kind, string[] VarNames, string[] VarTypes, string Scope);
+/// <summary>ウォッチしている変数の種類（メモリタブで、スタックに置くか static の欄に置くかを決める）。</summary>
+public enum VarKind { Local, Parameter, StaticField, InstanceField }
+
+/// <summary>計装ポイント1つ分の情報。Node は「元の」構文木のノード。VarKinds は VarNames と同じ並び。</summary>
+public sealed record HitInfo(SyntaxNode Node, HitKind Kind, string[] VarNames, string[] VarTypes, string Scope, VarKind[]? VarKinds = null);
 
 /// <summary>呼び出しの木に入れるメソッド1つ分の情報。Node は「元の」構文木の宣言。ArgNames は記録する引数の名前。</summary>
 public sealed record CallTarget(SyntaxNode Node, string Name, string[] ArgNames, int ParameterCount);
@@ -70,7 +73,8 @@ public sealed class Instrumenter : CSharpSyntaxRewriter
     {
         var vars = _opt.Watch && !_opt.NoWatch.Contains(original) ? WatchVariables(original) : new List<WatchVar>();
         int id = Register(new HitInfo(original, HitKind.Statement,
-            vars.Select(v => v.Name).ToArray(), vars.Select(v => v.Type).ToArray(), ScopeName(original.SpanStart)));
+            vars.Select(v => v.Name).ToArray(), vars.Select(v => v.Type).ToArray(), ScopeName(original.SpanStart),
+            vars.Select(v => v.Kind).ToArray()));
 
         var hit = vars.Count == 0
             ? ParseStatement($"global::HotaruCodeViz.Tracer.Hit({id});")
@@ -343,7 +347,7 @@ public sealed class Instrumenter : CSharpSyntaxRewriter
 
     // ======================= 変数ウォッチ =======================
 
-    private sealed record WatchVar(string Name, string Type, string Access, int Order);
+    private sealed record WatchVar(string Name, string Type, string Access, int Order, VarKind Kind);
 
     private List<WatchVar> WatchVariables(StatementSyntax s)
     {
@@ -365,10 +369,10 @@ public sealed class Instrumenter : CSharpSyntaxRewriter
                 switch (sym)
                 {
                     case ILocalSymbol l when assigned.Contains(l) && Watchable(l.Type):
-                        result.Add(new WatchVar(l.Name, TypeName(l.Type), Escape(l.Name), 1000 + Position(l)));
+                        result.Add(new WatchVar(l.Name, TypeName(l.Type), Escape(l.Name), 1000 + Position(l), VarKind.Local));
                         break;
                     case IParameterSymbol p when (p.RefKind != RefKind.Out || assigned.Contains(p)) && Watchable(p.Type):
-                        result.Add(new WatchVar(p.Name, TypeName(p.Type), Escape(p.Name), p.Ordinal));
+                        result.Add(new WatchVar(p.Name, TypeName(p.Type), Escape(p.Name), p.Ordinal, VarKind.Parameter));
                         break;
                 }
             }
@@ -388,7 +392,8 @@ public sealed class Instrumenter : CSharpSyntaxRewriter
                     var access = f.IsStatic
                         ? $"{t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{Escape(f.Name)}"
                         : $"this.{Escape(f.Name)}";
-                    result.Add(new WatchVar(f.Name, TypeName(f.Type), access, 100000 + Position(f)));
+                    result.Add(new WatchVar(f.Name, TypeName(f.Type), access, 100000 + Position(f),
+                        f.IsStatic ? VarKind.StaticField : VarKind.InstanceField));
                 }
             }
         }

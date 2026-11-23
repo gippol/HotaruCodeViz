@@ -3,5 +3,7 @@ obj/
 .vs/
 *.user
 
+tasks_md/
+
 # 大きな外部ツール（ffmpeg など）は各自で置く
 **/tools/*.exe
