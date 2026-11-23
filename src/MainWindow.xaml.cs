@@ -86,6 +86,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         InitRecording();
         InitFlow();
+        InitCalls();
         InitSamples();
 
         _graph = new SyntaxGraph(GraphScroll);
