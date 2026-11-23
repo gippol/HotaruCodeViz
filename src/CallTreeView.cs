@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace HotaruCodeViz;
@@ -10,6 +11,7 @@ namespace HotaruCodeViz;
 ///   戻った呼び出し     … 白（→ 戻り値）、例外で抜けたものは赤
 ///   ×N                 … 同じ引数での呼び出しが N 回目（メモ化していない再帰で増える）
 /// 呼び出しが多いときは、今いる道筋とその兄弟だけを描いて、ほかは「… 他 N 回」「+N」にまとめる。
+/// 箱をクリックすると CallClicked、右クリックすると CallRightClicked（どちらも CallLog.Nodes の位置）。
 /// </summary>
 public sealed class CallTreeView : FrameworkElement
 {
@@ -264,6 +266,54 @@ public sealed class CallTreeView : FrameworkElement
             Text(dc, $"+{n.Collapsed:N0}", rect.X, rect.Bottom + 2, 10, SubBrush, center: rect.Width);
 
         foreach (var c in n.Children) DrawNodes(dc, c);
+    }
+
+    // ======================= クリック =======================
+
+    /// <summary>呼び出しの箱を左クリックした（CallLog.Nodes の位置）。</summary>
+    public event Action<int>? CallClicked;
+
+    /// <summary>呼び出しの箱を右クリックした（CallLog.Nodes の位置）。</summary>
+    public event Action<int>? CallRightClicked;
+
+    /// <summary>点 p にある呼び出しの箱（CallLog.Nodes の位置）。なければ -1（「… 他 N 回」も -1）。</summary>
+    public int CallAt(Point p)
+    {
+        static int Find(List<DNode> list, Point p)
+        {
+            foreach (var n in list)
+            {
+                if (n.Index >= 0 && new Rect(n.X - n.BoxW / 2, n.Y, n.BoxW, BoxH).Contains(p)) return n.Index;
+                int c = Find(n.Children, p);
+                if (c >= 0) return c;
+            }
+            return -1;
+        }
+        return Find(_roots, p);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        Cursor = CallAt(e.GetPosition(this)) >= 0 ? Cursors.Hand : null;
+    }
+
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonUp(e);
+        int index = CallAt(e.GetPosition(this));
+        if (index < 0) return;
+        e.Handled = true;
+        CallClicked?.Invoke(index);
+    }
+
+    protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseRightButtonUp(e);
+        int index = CallAt(e.GetPosition(this));
+        if (index < 0) return;
+        e.Handled = true;
+        CallRightClicked?.Invoke(index);
     }
 
     private void Text(DrawingContext dc, string text, double x, double y, double size, Brush brush, bool bold = false, double center = 0)
