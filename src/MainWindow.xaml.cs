@@ -85,6 +85,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         InitRecording();
+        InitFlow();
         InitSamples();
 
         _graph = new SyntaxGraph(GraphScroll);
@@ -111,6 +112,7 @@ public partial class MainWindow : Window
             else if (Tracer.FastForward && !Tracer.Paused)
                 StatusText.Text = $"⏩ 早送り中… {Tracer.StepCount:N0} ステップ";
             if (!_measuring) DrawHeatmap();
+            if (!_measuring && FlowTabVisible) RefreshFlow();
             UpdateTimeline();
         };
         _uiTimer.Start();
@@ -151,6 +153,7 @@ public partial class MainWindow : Window
         _graph.ClearCache();
         ShowIdleGraph();
         DrawGutterLater();
+        InvalidateFlow();
     }
 
     private void ShowIdleGraph()
@@ -537,6 +540,7 @@ public partial class MainWindow : Window
         Tracer.Reset();
         StartCalls(result, watch);
         StartMemory(result, watch);
+        StartFlow(result);
         AcceptCompiledConditions(result);
         Tracer.Paused = mode == RunMode.Step;
         Tracer.FastForward = mode == RunMode.Fast;
@@ -564,6 +568,7 @@ public partial class MainWindow : Window
             try
             {
                 CodeRunner.Execute(bytes);
+                Tracer.Flow?.Finish(); // 最後のブロックから「終了」までの道筋を数える
                 message = "✅ 実行終了";
             }
             catch (ExecutionStoppedException)
@@ -585,6 +590,7 @@ public partial class MainWindow : Window
                 DrawHeatmap();
                 UpdateTimeline();
                 FinishCalls();
+                ShowFlowTab();
             });
         })
         { IsBackground = true, Name = "UserCode", };
@@ -673,6 +679,7 @@ public partial class MainWindow : Window
         {
             SetValue(node, ev.Value);
         }
+        if (info.Kind != HitKind.Expression) UpdateFlow(ev, live);
         UpdateCalls(ev.Step);
 
         int line = LineOf(node);

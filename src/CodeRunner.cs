@@ -11,10 +11,11 @@ namespace HotaruCodeViz;
 /// <param name="BreakConditionIds">条件付きブレークポイントの条件を差し込めた計装ポイント ID → 行</param>
 /// <param name="ConditionErrors">使えなかった条件（行 → 理由）</param>
 /// <param name="Methods">呼び出しの木に入れたメソッド（Tracer.Enter の ID → 情報）</param>
+/// <param name="Flow">制御フローグラフ（作れなかったら null）</param>
 public sealed record BuildResult(
     byte[]? Bytes, Dictionary<int, HitInfo> Map, List<string> Errors, List<string> Notes,
     Dictionary<int, int>? BreakConditionIds = null, Dictionary<int, string>? ConditionErrors = null,
-    Dictionary<int, CallTarget>? Methods = null);
+    Dictionary<int, CallTarget>? Methods = null, FlowProgram? Flow = null);
 
 /// <summary>Roslyn でメモリ上にコンパイルして実行する。</summary>
 public static class CodeRunner
@@ -113,7 +114,16 @@ public static class CodeRunner
                     if (!usedLines.Contains(line) && !conditionErrors.ContainsKey(line))
                         conditionErrors[line] = "この行には止まれる場所（文やループの条件）がありません";
 
-                return new BuildResult(ms.ToArray(), ins.Map, new(), notes, ins.BreakConditionIds, conditionErrors, ins.Methods);
+                FlowProgram? flow = null;
+                try
+                {
+                    flow = FlowProgram.Build(original, model, ins.Map);
+                }
+                catch (Exception ex)
+                {
+                    notes.Add($"制御フローグラフを作れませんでした（{ex.GetType().Name}）");
+                }
+                return new BuildResult(ms.ToArray(), ins.Map, new(), notes, ins.BreakConditionIds, conditionErrors, ins.Methods, flow);
             }
 
             // エラーの場所から、原因になった Tracer.Expr / Tracer.Hit を探して外す

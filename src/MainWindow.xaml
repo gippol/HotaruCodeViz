@@ -140,6 +140,22 @@
                                   SelectedItemChanged="AstView_SelectedItemChanged"/>
                     </DockPanel>
                 </TabItem>
+                <TabItem x:Name="FlowTab" Header="🔀 制御フロー">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,4">
+                            <TextBlock Text="メソッド" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox x:Name="FlowGraphCombo" MinWidth="220" SelectionChanged="FlowGraphCombo_SelectionChanged"/>
+                            <CheckBox x:Name="FlowFollowCheck" Content="実行中のメソッドを追う" IsChecked="True"
+                                      VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        </StackPanel>
+                        <TextBlock DockPanel.Dock="Top" Margin="8,0,8,2" TextWrapping="Wrap" Foreground="#888" FontSize="11.5"
+                                   Text="箱＝基本ブロック（途中で分かれも合流もしない処理）、◆＝分岐の条件、左を回る矢印＝ループで戻る。黄色＝今実行中、青＝通った（太いほど多い）、オレンジ＝今のブロックへ来た道筋、灰色の点線＝到達できないコード。箱をクリックするとソースを選びます。"/>
+                        <TextBlock x:Name="FlowInfo" DockPanel.Dock="Top" Margin="8,2,8,6" TextWrapping="Wrap" Foreground="#555"/>
+                        <ScrollViewer x:Name="FlowScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Background="White">
+                            <local:FlowView x:Name="FlowPanel"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </TabItem>
                 <TabItem Header="計算量">
                     <DockPanel Margin="8,6">
                         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#555"
