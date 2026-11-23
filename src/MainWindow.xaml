@@ -273,10 +273,24 @@
                     <TextBlock x:Name="CallStackText" DockPanel.Dock="Top" Margin="6,0,6,2" Foreground="#B26A00"
                                TextTrimming="CharacterEllipsis" FontFamily="Consolas, Meiryo UI" Visibility="Collapsed"
                                ToolTip="呼び出し履歴（左が外側、右が今実行中）"/>
-                    <ListView x:Name="WatchList" FontFamily="Consolas" FontSize="13">
+                    <ListView x:Name="WatchList" FontFamily="Consolas" FontSize="13"
+                              MouseDoubleClick="WatchList_MouseDoubleClick">
+                        <ListView.ContextMenu>
+                            <ContextMenu Opened="WatchMenu_Opened">
+                                <MenuItem Header="この変数が最後に変わったところへ戻る" Click="WatchLastChange_Click"/>
+                            </ContextMenu>
+                        </ListView.ContextMenu>
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
-                                <Setter Property="ToolTip" Value="{Binding Value}"/>
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <TextBlock>
+                                            <Run Text="{Binding Value, Mode=OneWay}"/>
+                                            <LineBreak/>
+                                            <Run Text="（ダブルクリックで、この変数が最後に変わったところへ戻る）" Foreground="Gray"/>
+                                        </TextBlock>
+                                    </Setter.Value>
+                                </Setter>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Changed}" Value="True">
                                         <Setter Property="Background" Value="#FFF3C4"/>
