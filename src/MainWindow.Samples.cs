@@ -42,6 +42,7 @@ public partial class MainWindow
     {
         _breakpoints.Clear();
         _breakpointConditions.Clear();
+        _hitCountRules.Clear();
         SourceBox.Text = sample.Code;
         InputBox.Text = sample.Input.Replace("\n", Environment.NewLine);
         _loadedSampleSource = SourceBox.Text;

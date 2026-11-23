@@ -106,6 +106,9 @@ public static class Tracer
     /// <summary>条件付きブレークポイントの条件で例外が出たとき（ID・メッセージ）。ID ごとに 1 回だけ呼ぶ。</summary>
     public static Action<int, string>? OnConditionError;
 
+    /// <summary>ブレークポイントの回数とヒットカウント（null なら数えずに毎回止まる）。</summary>
+    public static volatile HitCounter? HitCounts;
+
     private static int _conditionMetId = -1;
     private static readonly HashSet<int> _reportedConditionErrors = new();
 
@@ -190,6 +193,7 @@ public static class Tracer
         _lastNotify = 0;
         Breakpoints = null;
         ConditionalBreakpoints = null;
+        HitCounts = null;
         _conditionMetId = -1;
         lock (_reportedConditionErrors) _reportedConditionErrors.Clear();
         Counts = null;
@@ -413,7 +417,7 @@ public static class Tracer
         {
             var conditional = ConditionalBreakpoints;
             bool needsCondition = conditional is not null && (uint)id < (uint)conditional.Length && conditional[id];
-            if (!needsCondition || conditionMet == id)
+            if ((!needsCondition || conditionMet == id) && (HitCounts is not { } hits || hits.ShouldStop(id, step)))
             {
                 _fast = false;
                 _paused = true;
