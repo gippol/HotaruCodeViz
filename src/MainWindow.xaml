@@ -212,6 +212,15 @@
                         </ScrollViewer>
                     </DockPanel>
                 </TabItem>
+                <TabItem x:Name="MemoryTab" Header="🧠 メモリ">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Margin="8,6" TextWrapping="Wrap" Foreground="#555"
+                                   Text="左がスタック（呼び出しごとのフレームと変数）、右がヒープ（オブジェクト）。矢印は参照、参照 ×N は同じオブジェクトを N 本が指していること。オレンジ＝変わった値、緑の枠＝新しくできたオブジェクト、🗑＝どこからもたどれなくなったオブジェクト（GC で回収されうる）。"/>
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Background="White">
+                            <local:MemoryView x:Name="MemoryPanel"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </TabItem>
             </TabControl>
 
             <GridSplitter Grid.Row="1" Grid.ColumnSpan="3" Height="5" HorizontalAlignment="Stretch" Background="#DDD"/>

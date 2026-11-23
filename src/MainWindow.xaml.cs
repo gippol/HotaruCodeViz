@@ -536,6 +536,7 @@ public partial class MainWindow : Window
         _uiErrorReported = false;
         Tracer.Reset();
         StartCalls(result, watch);
+        StartMemory(result, watch);
         AcceptCompiledConditions(result);
         Tracer.Paused = mode == RunMode.Step;
         Tracer.FastForward = mode == RunMode.Fast;
@@ -666,6 +667,7 @@ public partial class MainWindow : Window
             ClearValuesUnder(node); // この文を新しく実行するので、前回の式の値を消す
             UpdateWatch(info, ev.Vars);
             if (info.VarNames.Length > 0) ArrayPanel.Update(info.VarNames, info.VarTypes, ev.Vars, ev.Shots);
+            UpdateMemory(ev);
         }
         else
         {

@@ -154,6 +154,8 @@ public partial class MainWindow
             }
         }
 
+        PrimeMemory(history, s);
+
         // 4. その文から index までを再生する（光の尾のために少し前からにする）
         int start = Math.Max(0, Math.Min(s, index - 4));
         for (int j = start; j <= index; j++)
