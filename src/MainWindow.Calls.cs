@@ -85,5 +85,6 @@ public partial class MainWindow
     {
         if (e.OriginalSource != ViewTabs) return; // 中の ListView などの SelectionChanged も上がってくる
         if (CallTabVisible) RefreshCallTree();
+        ShowFlowTab();
     }
 }

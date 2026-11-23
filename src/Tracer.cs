@@ -121,6 +121,9 @@ public static class Tracer
     /// <summary>呼び出しの木の記録。null なら記録しない（Enter / Exit は何もしない）。</summary>
     public static volatile CallLog? Calls;
 
+    /// <summary>制御フロータブ用：ブロックと辺を通った回数を数える（null なら数えない）。</summary>
+    public static volatile FlowTracker? Flow;
+
     /// <summary>Enter が「何もしなかった」ときに返す印（値の文字列化中など）。</summary>
     public const int NoCall = int.MinValue;
 
@@ -193,6 +196,7 @@ public static class Tracer
         MaxSteps = long.MaxValue;
         History = null;
         Calls = null;
+        Flow = null;
         _baseDepth = int.MaxValue;
         CaptureMemory = false;
         _frames = NewFrames();
@@ -209,6 +213,7 @@ public static class Tracer
     public static void Hit(int id)
     {
         if (_busy) return;
+        Flow?.Visit(id);
         // 変数ウォッチのない文（コンパイルの都合で外したものも含む）では、フレームの変数は前のままにしておく
         bool notify = Begin(id, out long step);
         var memory = notify && CaptureMemory ? SnapshotMemory() : null;
@@ -219,6 +224,7 @@ public static class Tracer
     public static void Hit(int id, object?[] vars)
     {
         if (_busy) return;
+        Flow?.Visit(id);
         SetFrameVars(id, vars);
         bool notify = Begin(id, out long step);
         var history = History;
@@ -279,6 +285,7 @@ public static class Tracer
     public static bool Cond(int id, bool value)
     {
         if (_busy) return value;
+        Flow?.Visit(id);
         bool notify = Begin(id, out long step);
         var text = value ? "true" : "false";
         History?.Add(id, text, null, step);
@@ -298,6 +305,7 @@ public static class Tracer
         // 「同じ引数で何回目か」は、引数が数・文字列などの単純な値のときだけ数える（オブジェクトは表示が同じでも別物のことがある）
         bool simple = args is null || args.All(a => a is null or string or decimal or Enum || a.GetType().IsPrimitive);
         int call = calls.Push(methodId, texts, Interlocked.Read(ref _steps), simple);
+        Flow?.Push();
         if (CaptureMemory && OwnsFrames()) _frames.Add(new Frame { MethodId = methodId, Call = call, Vars = args ?? [] });
         return call;
     }
@@ -321,6 +329,7 @@ public static class Tracer
     {
         if (call == NoCall) return;
         Calls?.Pop(call, Interlocked.Read(ref _steps));
+        Flow?.Pop();
         if (CaptureMemory && OwnsFrames())
         {
             // ふつうはいちばん上。記録しなかった呼び出し（Hidden）は同じ番号が並ぶが、上から探せば正しく降ろせる
