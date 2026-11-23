@@ -326,7 +326,7 @@ public partial class MainWindow : Window
     {
         if (line < 0) return;
         if (!_breakpoints.Remove(line)) _breakpoints.Add(line);
-        else _breakpointConditions.Remove(line); // ブレークポイントを外したら条件も消す
+        else ClearBreakpointSettings(line); // ブレークポイントを外したら条件・ヒットカウントも消す
         UpdateTracerBreakpoints();
         DrawGutter();
     }
@@ -342,11 +342,14 @@ public partial class MainWindow : Window
         }
         var flags = new bool[_map.Count];
         var conditional = new bool[_map.Count];
+        var lineOfId = new int[_map.Count]; // ヒットカウント用：ID → ブレークポイントの行（-1 = ブレークポイントでない）
+        Array.Fill(lineOfId, -1);
         foreach (var (id, info) in _map)
         {
             if (info.Kind == HitKind.Expression) continue;
             int line = LineOf(info.Node);
             if (!_breakpoints.Contains(line)) continue;
+            lineOfId[id] = line;
 
             if (_breakpointConditions.TryGetValue(line, out var condition))
             {
@@ -362,6 +365,7 @@ public partial class MainWindow : Window
                 flags[id] = true;
             }
         }
+        _hitCounter?.Update(lineOfId, ActiveHitCountRules());
         // ConditionalBreakpoints を先に入れる（Breakpoints だけ新しい瞬間に条件なしで止まらないように）
         Tracer.ConditionalBreakpoints = conditional;
         Tracer.Breakpoints = flags;
@@ -543,6 +547,8 @@ public partial class MainWindow : Window
         StartMemory(result, watch);
         StartFlow(result);
         AcceptCompiledConditions(result);
+        _hitCounter = new HitCounter();
+        Tracer.HitCounts = _hitCounter;
         Tracer.Paused = mode == RunMode.Step;
         Tracer.FastForward = mode == RunMode.Fast;
         Tracer.DelayMs = (int)SpeedSlider.Value;
@@ -686,8 +692,8 @@ public partial class MainWindow : Window
         int line = LineOf(node);
         bool atBreakpoint = live && Tracer.Paused && info.Kind != HitKind.Expression && _breakpoints.Contains(line);
         string prefix = !live ? "🕰 過去　"
-            : atBreakpoint && _breakpointConditions.TryGetValue(line, out var bpCondition) ? $"🔴 条件付きブレークポイント（{bpCondition}）　"
-            : atBreakpoint ? "🔴 ブレークポイント　" : "";
+            : atBreakpoint ? BreakpointStatus(ev.Step, line)
+            : "";
         string steps = $"ステップ {ev.Step:N0}　行 {line + 1}　" + (live && Tracer.MeasureDepth && ev.Depth > 0 ? $"深さ {ev.Depth}　" : "");
         StatusText.Text = prefix + steps + info.Kind switch
         {
